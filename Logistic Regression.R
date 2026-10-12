@@ -5,11 +5,15 @@
 #
 ###########################################
 
-# Set directory
-setwd("/Users/derrickmarkbavaudbaruga/Documents/spring 2023/csc 461 machine learning/topic 8")
+# Run from the repository root, or provide an explicit input path.
+data_path <- Sys.getenv("CHURN_DATA_PATH", unset = "data/Telco-Customer-Churn.csv")
+if (!file.exists(data_path)) {
+  stop("Dataset not found: ", data_path,
+       ". Add the CSV under data/ or set CHURN_DATA_PATH.")
+}
 
 # Load csv
-customer_churn <- read.csv("Telco-Customer-Churn.csv")
+customer_churn <- read.csv(data_path)
 
 # Load Libraries
 library(tidyverse)
@@ -42,7 +46,7 @@ customer_churn <- customer_churn %>%
     Contract = as.factor(Contract),
     PaperlessBilling = as.factor(PaperlessBilling),
     PaymentMethod = as.factor(PaymentMethod),
-    Churn = as.factor(Churn),
+    Churn = factor(Churn, levels = c("No", "Yes")),
     
     # Coerce to numeric
     tenure = as.numeric(tenure),
@@ -52,11 +56,14 @@ customer_churn <- customer_churn %>%
     TotalCharges = as.numeric(gsub(",", "", TotalCharges))
   )
 
+# Numeric conversion can introduce missing values (for example blank TotalCharges).
+customer_churn <- na.omit(customer_churn)
+
 # Set seed for reproducibility
 set.seed(123)
 
 # Splitting the data
-data_split <- initial_split(customer_churn, prop = 0.75)
+data_split <- initial_split(customer_churn, prop = 0.75, strata = Churn)
 train_data <- training(data_split)
 test_data <- testing(data_split)
 
@@ -109,11 +116,12 @@ results <- test_data %>%
 # Confusion Matrix
 conf_matrix <- conf_mat(results, truth = Churn, estimate = predicted_class)
 
+# Rows are predictions; columns are truth. "Yes" is the positive class.
 # Extract elements from the confusion matrix
 true_positives <- conf_matrix$table["Yes", "Yes"]
-false_positives <- conf_matrix$table["No", "Yes"]
+false_positives <- conf_matrix$table["Yes", "No"]
 true_negatives <- conf_matrix$table["No", "No"]
-false_negatives <- conf_matrix$table["Yes", "No"]
+false_negatives <- conf_matrix$table["No", "Yes"]
 
 # Calculate accuracy, sensitivity, and specificity
 accuracy <- (true_positives + true_negatives) / sum(conf_matrix$table)
@@ -127,7 +135,7 @@ cat("Accuracy:", accuracy, "\nSensitivity (Recall):", sensitivity, "\nSpecificit
 library(yardstick)
 
 # Generate the ROC Curve Data
-roc_data <- roc_curve(results, truth = Churn, .pred_Yes)
+roc_data <- roc_curve(results, truth = Churn, .pred_Yes, event_level = "second")
 
 # Plot the ROC Curve
 roc_plot <- ggplot(roc_data, aes(x = 1 - specificity, y = sensitivity)) +
@@ -139,7 +147,7 @@ roc_plot <- ggplot(roc_data, aes(x = 1 - specificity, y = sensitivity)) +
 print(roc_plot)
 
 # Calculate AUC using roc_auc on the original results
-auc_value <- roc_auc(results, truth = Churn, .pred_Yes)
+auc_value <- roc_auc(results, truth = Churn, .pred_Yes, event_level = "second")
 
 # Print the AUC
 cat("ROC AUC:", auc_value$.estimate, "\n")
